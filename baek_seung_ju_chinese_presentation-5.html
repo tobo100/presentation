@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>承珠的上海旅行记 & PPT 발표</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans SC', 'Noto Sans KR', sans-serif;
+            background-color: #FDF8F5;
+            color: #333333;
+        }
+
+        /* Pastel Accent Themes */
+        .bg-pastel-pink { background-color: #FFF0F3; }
+        .bg-pastel-purple { background-color: #F8F0FC; }
+        .bg-pastel-yellow { background-color: #FFFDE7; }
+        .bg-pastel-green { background-color: #E8F5E9; }
+
+        /* Card Shadows & Borders */
+        .section-card {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #FFE4E8;
+            box-shadow: 0 10px 25px -5px rgba(255, 182, 193, 0.25);
+        }
+
+        /* Interactive Language Switcher Tabs */
+        .tab-btn.active {
+            background-color: #FF85A1;
+            color: #FFFFFF;
+            box-shadow: 0 4px 12px rgba(255, 133, 161, 0.4);
+        }
+        .tab-btn:not(.active) {
+            color: #666666;
+            background-color: transparent;
+        }
+        .tab-btn:not(.active):hover {
+            background-color: #FFE4E8;
+            color: #FF85A1;
+        }
+
+        /* Image Upload Box Container */
+        .img-upload-box {
+            position: relative;
+            cursor: pointer;
+            overflow: hidden;
+            border: 2px dashed #FFB6C1;
+            transition: all 0.2s ease-in-out;
+            background-color: #FFF5F7;
+        }
+        .img-upload-box:hover {
+            border-color: #FF477E;
+            background-color: #FFEBF0;
+        }
+        .img-upload-box input[type="file"] {
+            display: none;
+        }
+        .preview-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+        .preview-img.has-img {
+            display: block;
+        }
+        .upload-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
+            color: #FF85A1;
+            font-size: 0.85rem;
+            font-weight: bold;
+            padding: 10px;
+            text-align: center;
+        }
+        .img-upload-box.has-image .upload-placeholder {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 32px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #FFFFFF;
+            font-size: 0.75rem;
+            flex-direction: row;
+            gap: 4px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #FFF0F5;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #FFB6C1;
+            border-radius: 4px;
+        }
+    </style>
+
+    <!-- Firebase SDK Imports for Permanent Cloud Storage -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment variables or default configuration
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "dummy-api-key",
+            authDomain: "dummy.firebaseapp.com",
+            projectId: "dummy-project",
+            storageBucket: "dummy.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'baek-seungju-presentation';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+
+        // Compress Image before storing to ensure smooth Firestore sync
+        function compressImage(base64Str, maxWidth = 800, quality = 0.7) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = base64Str;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('canvas');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+            });
+        }
+
+        // Initialize Authentication
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth initial sign-in fallback:", err);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                // Subscribe to real-time permanent image updates across devices
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'gallery', 'photos');
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        Object.keys(data).forEach(id => {
+                            const imgVal = data[id];
+                            if (imgVal) {
+                                // Save to localStorage for immediate next load cache
+                                try { localStorage.setItem('user_photo_' + id, imgVal); } catch(e){}
+
+                                const img = document.getElementById(id);
+                                const box = document.getElementById('box-' + id);
+                                if (img) {
+                                    img.src = imgVal;
+                                    img.classList.add('has-img');
+                                    if (box) box.classList.add('has-image');
+                                }
+                            }
+                        });
+                    }
+                }, (error) => {
+                    console.error("Firestore sync error:", error);
+                });
+            }
+        });
+
+        initAuth();
+
+        // Global functions exposed for photo uploads
+        window.saveImageToCloud = async function(imgId, base64Data) {
+            // Local fallback immediately
+            try {
+                localStorage.setItem('user_photo_' + imgId, base64Data);
+            } catch(e) {}
+
+            // Save to Firestore for Permanent Storage across all devices
+            if (!auth.currentUser) {
+                try { await signInAnonymously(auth); } catch(e){}
+            }
+            if (auth.currentUser) {
+                try {
+                    const compressed = await compressImage(base64Data);
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'gallery', 'photos');
+                    await setDoc(docRef, {
+                        [imgId]: compressed
+                    }, { merge: true });
+                } catch (e) {
+                    console.error("Permanent cloud save error:", e);
+                }
+            }
+        };
+    </script>
+</head>
+<body class="min-h-screen pb-16 antialiased">
+
+    <!-- TOP STICKY NAVBAR -->
+    <header class="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-pink-100 shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl animate-bounce">✨</span>
+                <span class="font-extrabold text-lg sm:text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600" lang-key="header-title">
+                    承珠的上海旅行记 & PPT
+                </span>
+            </div>
+
+            <!-- Language Switcher Tabs -->
+            <div class="flex items-center bg-pink-50/80 p-1 rounded-full border border-pink-200">
+                <button id="btn-zh" onclick="switchLang('zh')" class="tab-btn active px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-300">
+                    🇨🇳 中文
+                </button>
+                <button id="btn-ko" onclick="switchLang('ko')" class="tab-btn px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-300">
+                    🇰🇷 한국어
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-4xl mx-auto px-4 pt-6 space-y-10">
+
+        <!-- SECTION 1: PROFILE CARD -->
+        <section class="section-card rounded-3xl p-6 md:p-10">
+            <div class="flex flex-col md:flex-row items-center gap-8">
+                <!-- Profile Image Box -->
+                <div class="relative group flex-shrink-0">
+                    <div class="img-upload-box rounded-full w-44 h-44 border-4 border-white shadow-md flex items-center justify-center text-center" onclick="triggerFileInput('img-profile-input')" id="box-img-profile">
+                        <img id="img-profile" src="" alt="Profile" class="preview-img">
+                        <div class="upload-placeholder" id="ph-img-profile">
+                            <span class="text-2xl">📷</span>
+                            <span class="mt-1">프로필 사진 첨부</span>
+                        </div>
+                        <input type="file" id="img-profile-input" accept="image/*" onchange="handleImageUpload(this, 'img-profile', 'box-img-profile')">
+                    </div>
+                </div>
+
+                <!-- Personal Info -->
+                <div class="flex-1 space-y-4 text-center md:text-left">
+                    <div>
+                        <span class="bg-pink-100 text-pink-600 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider" lang-key="intro-badge">
+                            ✨ Self Intro / 关于我 ✨
+                        </span>
+                        <h1 class="text-3xl font-extrabold text-gray-800 mt-2" lang-key="name">
+                            백승주 (Baek Seung-ju)
+                        </h1>
+                        <p class="text-sm text-purple-600 font-semibold mt-1" lang-key="slogan">
+                            "반도체 엔지니어 👩‍💻 | 일상을 기록하는 식물 집사 🌿"
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700 pt-2">
+                        <div class="bg-white/70 p-2.5 rounded-xl border border-pink-100 flex items-center gap-2">
+                            <span>🎂</span>
+                            <strong class="text-pink-600" lang-key="label-birthday">생일:</strong>
+                            <span lang-key="val-birthday">1997.10.10 (천칭자리 ♎️)</span>
+                        </div>
+
+                        <div class="bg-white/70 p-2.5 rounded-xl border border-pink-100 flex items-center gap-2">
+                            <span>📍</span>
+                            <strong class="text-pink-600" lang-key="label-birthplace">출생:</strong>
+                            <span lang-key="val-birthplace">미국 캘리포니아 주 🇺🇸</span>
+                        </div>
+
+                        <div class="bg-white/70 p-2.5 rounded-xl border border-pink-100 flex items-center gap-2">
+                            <span>🏡</span>
+                            <strong class="text-pink-600" lang-key="label-live">거주:</strong>
+                            <span lang-key="val-live">건대입구 (본가) ⇄ 동탄 (자취)</span>
+                        </div>
+
+                        <!-- Semiconductor Job Icon -->
+                        <div class="bg-white/70 p-2.5 rounded-xl border border-pink-100 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+                            </svg>
+                            <strong class="text-pink-600" lang-key="label-job">직업:</strong>
+                            <span class="font-bold text-purple-900" lang-key="val-job">반도체 엔지니어</span>
+                        </div>
+                    </div>
+
+                    <!-- Hobbies -->
+                    <div class="pt-2">
+                        <strong class="text-xs text-gray-500 uppercase tracking-wider block mb-2" lang-key="label-hobby">취미 (Hobbies):</strong>
+                        <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+                            <span class="bg-pink-100 text-pink-700 text-xs px-3 py-1 rounded-full font-semibold" lang-key="hobby-1">🌱 식물 기르기</span>
+                            <span class="bg-purple-100 text-purple-700 text-xs px-3 py-1 rounded-full font-semibold" lang-key="hobby-2">📚 언어 공부하기</span>
+                            <span class="bg-yellow-100 text-yellow-800 text-xs px-3 py-1 rounded-full font-semibold" lang-key="hobby-3">👩‍🍳 요리하기</span>
+                            <span class="bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full font-semibold" lang-key="hobby-4">✈️ 여행하기</span>
+                        </div>
+                    </div>
+
+                    <!-- Languages -->
+                    <div class="pt-1">
+                        <strong class="text-xs text-gray-500 uppercase tracking-wider block mb-1" lang-key="label-lang">가능 언어:</strong>
+                        <div class="flex gap-2 justify-center md:justify-start text-xs font-bold text-gray-600">
+                            <span class="bg-white border border-gray-200 px-2.5 py-1 rounded-md" lang-key="lang-ko">🇰🇷 한국어</span>
+                            <span class="bg-white border border-gray-200 px-2.5 py-1 rounded-md" lang-key="lang-zh">🇨🇳 중국어</span>
+                            <span class="bg-white border border-gray-200 px-2.5 py-1 rounded-md" lang-key="lang-en">🇺🇸 영어</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2: SHANGHAI TRAVEL SPOTS -->
+        <section class="section-card rounded-3xl p-6 md:p-8">
+            <div class="flex items-center space-x-3 mb-6">
+                <span class="text-3xl">🌃</span>
+                <h2 class="text-2xl font-bold text-gray-800" lang-key="shanghai-title">
+                    가장 좋았던 여행지: 상하이 (Shanghai) ✨
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Spot 1: Bund & Pearl Tower -->
+                <div class="bg-white p-4 rounded-2xl border border-pink-100">
+                    <div class="img-upload-box rounded-xl h-56 mb-3 has-image" onclick="triggerFileInput('img-spot1-input')" id="box-img-spot1">
+                        <img id="img-spot1" src="https://placehold.co/600x400/FFF0F3/FF85A1?text=Bund+Night" alt="Bund View" class="preview-img has-img">
+                        <div class="upload-placeholder" id="ph-img-spot1">
+                            <span class="text-2xl">📷</span>
+                            <span class="mt-1">와이탄 / 동방명주 야경 사진 첨부</span>
+                        </div>
+                        <input type="file" id="img-spot1-input" accept="image/*" onchange="handleImageUpload(this, 'img-spot1', 'box-img-spot1')">
+                    </div>
+                    <h3 class="font-bold text-lg text-pink-600 mb-1" lang-key="spot1-title">外滩 & 东方明珠夜景</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed" lang-key="spot1-desc">
+                        外滩夜景简直绝绝子！站在黄浦江边吹着晚风，看着东方明珠和天际线灯光秀太治愈了，拍照出片率直接拉满 📸!
+                    </p>
+                </div>
+
+                <!-- Spot 2: Disney -->
+                <div class="bg-white p-4 rounded-2xl border border-pink-100">
+                    <div class="img-upload-box rounded-xl h-56 mb-3 has-image" onclick="triggerFileInput('img-spot2-input')" id="box-img-spot2">
+                        <img id="img-spot2" src="data:image/jpeg;base64,..." alt="Disney View" class="preview-img has-img" style="content:url('SNOW_20250919_143717_156.jpg')">
+                        <div class="upload-placeholder" id="ph-img-spot2">
+                            <span class="text-2xl">📷</span>
+                            <span class="mt-1">상하이 디즈니랜드 사진 첨부</span>
+                        </div>
+                        <input type="file" id="img-spot2-input" accept="image/*" onchange="handleImageUpload(this, 'img-spot2', 'box-img-spot2')">
+                    </div>
+                    <h3 class="font-bold text-lg text-purple-600 mb-1" lang-key="spot2-title">上海迪士尼乐园</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed" lang-key="spot2-desc">
+                        成年人的避世童话世界！戴上朱迪兔子耳朵沉浸式游园，晚上的城堡烟花秀直接把浪漫氛围拉满 🎆～
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: MUST-EAT GOURMET -->
+        <section class="section-card rounded-3xl p-6 md:p-8">
+            <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
+                <div class="flex items-center space-x-3">
+                    <span class="text-3xl">🥟</span>
+                    <h2 class="text-2xl font-bold text-gray-800" lang-key="food-title">
+                        한국인이 가본 상하이 필수 먹방 코스 😋
+                    </h2>
+                </div>
+                <span class="text-xs bg-red-100 text-red-600 font-bold px-3 py-1 rounded-full" lang-key="food-badge">
+                    🔥 种草预警 / 美食打卡
+                </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Food 1: Egg Tart -->
+                <div class="bg-gradient-to-br from-yellow-50 to-orange-50 p-4 rounded-2xl border border-yellow-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food1-input')" id="box-img-food1">
+                        <img id="img-food1" src="" alt="Egg Tart" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food1-input" accept="image/*" onchange="handleImageUpload(this, 'img-food1', 'box-img-food1')">
+                    </div>
+                    <h3 class="font-bold text-yellow-900" lang-key="food1-name">莉莲蛋挞 (Lillian Bakery)</h3>
+                    <span class="text-xs text-yellow-700 bg-yellow-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food1-tag">蛋挞界 Ceiling 👑</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food1-desc">外酥里嫩，奶香味浓郁上头！每次路过都忍不住买上一盒～</p>
+                </div>
+
+                <!-- Food 2: Haidilao -->
+                <div class="bg-gradient-to-br from-red-50 to-pink-50 p-4 rounded-2xl border border-red-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food2-input')" id="box-img-food2">
+                        <img id="img-food2" src="" alt="Haidilao" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food2-input" accept="image/*" onchange="handleImageUpload(this, 'img-food2', 'box-img-food2')">
+                    </div>
+                    <h3 class="font-bold text-red-900" lang-key="food2-name">海底捞火锅 (Haidilao)</h3>
+                    <span class="text-xs text-red-700 bg-red-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food2-tag">快乐火锅 🍲</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food2-desc">体验极致的服务！看甩面表演、DIY秘制蘸料，用餐氛围感直接搞起 🎉</p>
+                </div>
+
+                <!-- Food 3: Crawfish -->
+                <div class="bg-gradient-to-br from-orange-50 to-red-50 p-4 rounded-2xl border border-orange-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food3-input')" id="box-img-food3">
+                        <img id="img-food3" src="" alt="Crawfish" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food3-input" accept="image/*" onchange="handleImageUpload(this, 'img-food3', 'box-img-food3')">
+                    </div>
+                    <h3 class="font-bold text-orange-900" lang-key="food3-name">香辣 / 麻辣小龙虾</h3>
+                    <span class="text-xs text-orange-700 bg-orange-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food3-tag">夜宵灵魂伴侣 🦞</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food3-desc">剥虾剥到根本停不下来！十三香和麻辣味香辣过瘾，越吃越过瘾～</p>
+                </div>
+
+                <!-- Food 4: Lamb Skewers -->
+                <div class="bg-gradient-to-br from-amber-50 to-yellow-50 p-4 rounded-2xl border border-amber-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food4-input')" id="box-img-food4">
+                        <img id="img-food4" src="" alt="Lamb Skewers" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food4-input" accept="image/*" onchange="handleImageUpload(this, 'img-food4', 'box-img-food4')">
+                    </div>
+                    <h3 class="font-bold text-amber-900" lang-key="food4-name">很久以前羊肉串</h3>
+                    <span class="text-xs text-amber-700 bg-amber-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food4-tag">撸串神器 🍢</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food4-desc">自动旋转烤炉超有意思！羊肉鲜嫩无膻味，搭配冰啤酒绝了 🍻</p>
+                </div>
+
+                <!-- Food 5: Dongpo Pork -->
+                <div class="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food5-input')" id="box-img-food5">
+                        <img id="img-food5" src="" alt="Dongpo Pork" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food5-input" accept="image/*" onchange="handleImageUpload(this, 'img-food5', 'box-img-food5')">
+                    </div>
+                    <h3 class="font-bold text-emerald-900" lang-key="food5-name">外婆家：东坡肉 & 麻婆豆腐</h3>
+                    <span class="text-xs text-emerald-700 bg-emerald-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food5-tag">性价比下饭神器 🍚</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food5-desc">东坡肉软糯肥而不腻，麻婆豆腐麻辣鲜香，妥妥的米饭杀手！</p>
+                </div>
+
+                <!-- Food 6: Dahuchun -->
+                <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-2xl border border-purple-200">
+                    <div class="img-upload-box h-40 rounded-xl mb-3" onclick="triggerFileInput('img-food6-input')" id="box-img-food6">
+                        <img id="img-food6" src="" alt="Dahuchun" class="preview-img">
+                        <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                        <input type="file" id="img-food6-input" accept="image/*" onchange="handleImageUpload(this, 'img-food6', 'box-img-food6')">
+                    </div>
+                    <h3 class="font-bold text-purple-900" lang-key="food6-name">大壶春：生煎包</h3>
+                    <span class="text-xs text-purple-700 bg-purple-200/80 px-2 py-0.5 rounded font-bold inline-block my-1" lang-key="food6-tag">爆汁生煎 🥟</span>
+                    <p class="text-xs text-gray-600 mt-1" lang-key="food6-desc">底脆肉香，咬开就是满满的浓郁汤汁，上海老字号名不虚传！</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: FUN DISCOVERIES -->
+        <section class="section-card rounded-3xl p-6 md:p-8">
+            <div class="flex items-center space-x-3 mb-6">
+                <span class="text-3xl">🤯</span>
+                <h2 class="text-2xl font-bold text-gray-800" lang-key="fun-title">
+                    상하이 여행 - 奇妙文化大发现 🤯
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- Fun 1: Shared Bikes -->
+                <div class="bg-purple-50/70 p-4 rounded-2xl border border-purple-100 flex flex-col justify-between">
+                    <div>
+                        <div class="img-upload-box h-36 rounded-xl mb-3 has-image" onclick="triggerFileInput('img-fun1-input')" id="box-img-fun1">
+                            <img id="img-fun1" src="" alt="Shared Bikes" class="preview-img has-img" style="content:url('스크린샷 2026-11-02 오후 8.30.58.jpg')">
+                            <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                            <input type="file" id="img-fun1-input" accept="image/*" onchange="handleImageUpload(this, 'img-fun1', 'box-img-fun1')">
+                        </div>
+                        <h3 class="font-bold text-purple-900" lang-key="fun1-title">共享单车大军 🚲</h3>
+                        <p class="text-xs text-gray-600 mt-2 leading-relaxed" lang-key="fun1-desc">
+                            街头到处都是蓝色和黄色的共享单车！感觉一条街上就有50多辆排成一排，随扫随走超级方便～
+                        </p>
+                    </div>
+                    <span class="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded w-fit mt-3" lang-key="fun1-tag">#扫码即走</span>
+                </div>
+
+                <!-- Fun 2: Turtle Dish -->
+                <div class="bg-pink-50/70 p-4 rounded-2xl border border-pink-100 flex flex-col justify-between">
+                    <div>
+                        <div class="img-upload-box h-36 rounded-xl mb-3 has-image" onclick="triggerFileInput('img-fun2-input')" id="box-img-fun2">
+                            <img id="img-fun2" src="" alt="Turtle Dish" class="preview-img has-img" style="content:url('스크린샷 2026-11-02 오후 8.31.28.jpg')">
+                            <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                            <input type="file" id="img-fun2-input" accept="image/*" onchange="handleImageUpload(this, 'img-fun2', 'box-img-fun2')">
+                        </div>
+                        <h3 class="font-bold text-pink-900" lang-key="fun2-title">菜单上的甲鱼料理 🐢</h3>
+                        <p class="text-xs text-gray-600 mt-2 leading-relaxed" lang-key="fun2-desc">
+                            在餐厅菜单上看到整只“甲鱼”真的被震撼到了！中国的大补饮食文化太神奇了！
+                        </p>
+                    </div>
+                    <span class="text-[10px] bg-pink-200 text-pink-800 font-bold px-2 py-0.5 rounded w-fit mt-3" lang-key="fun2-tag">#硬核滋补</span>
+                </div>
+
+                <!-- Fun 3: Beef Jerky Corner -->
+                <div class="bg-yellow-50/70 p-4 rounded-2xl border border-yellow-100 flex flex-col justify-between">
+                    <div>
+                        <div class="img-upload-box h-36 rounded-xl mb-3 has-image" onclick="triggerFileInput('img-fun3-input')" id="box-img-fun3">
+                            <img id="img-fun3" src="" alt="Beef Jerky" class="preview-img has-img" style="content:url('스크린샷 2026-11-02 오후 8.31.49.jpg')">
+                            <div class="upload-placeholder"><span class="text-xl">📷</span><span>사진 첨부</span></div>
+                            <input type="file" id="img-fun3-input" accept="image/*" onchange="handleImageUpload(this, 'img-fun3', 'box-img-fun3')">
+                        </div>
+                        <h3 class="font-bold text-yellow-900" lang-key="fun3-title">便利店牛肉干专区 🥩</h3>
+                        <p class="text-xs text-gray-600 mt-2 leading-relaxed" lang-key="fun3-desc">
+                            便利店里居然有一大片肉干/手撕牛肉专柜！各种口味辣爽带劲，解馋追剧必备零食～
+                        </p>
+                    </div>
+                    <span class="text-[10px] bg-yellow-200 text-yellow-800 font-bold px-2 py-0.5 rounded w-fit mt-3" lang-key="fun3-tag">#追剧零食</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 5: REGRETS & LESSONS (TMI) -->
+        <section class="section-card rounded-3xl p-6 md:p-8 border-l-4 border-l-pink-400">
+            <div class="flex items-center space-x-3 mb-6">
+                <span class="text-3xl">💡</span>
+                <h2 class="text-2xl font-bold text-gray-800" lang-key="tmi-title">
+                    美中不足的小插曲 & 学习中文的契机 💡
+                </h2>
+            </div>
+
+            <div class="space-y-4">
+                <div class="bg-white p-4 rounded-2xl border border-pink-100 shadow-sm">
+                    <h3 class="font-bold text-pink-600 text-base flex items-center gap-2" lang-key="tmi1-title">
+                        1. 机场地下网络信号不好，打车卡关一小时 🚕
+                    </h3>
+                    <p class="text-sm text-gray-600 mt-2 leading-relaxed" lang-key="tmi1-desc">
+                        到达上海机场地下时手机信号超级弱，完全刷新不出打车软件，整整卡了一个小时才打到车！而且发现当地几乎所有地方都只能用中文沟通 -> 瞬间激发了我“一定要把中文学好！”的决心 🔥！
+                    </p>
+                </div>
+
+                <div class="bg-white p-4 rounded-2xl border border-pink-100 shadow-sm">
+                    <h3 class="font-bold text-purple-600 text-base flex items-center gap-2" lang-key="tmi2-title">
+                        2. 便利店甜品比想像中少？原来全在手机外卖里！📱
+                    </h3>
+                    <p class="text-sm text-gray-600 mt-2 leading-relaxed" lang-key="tmi2-desc">
+                        以为便利店会像韩国一样有超多网红精致甜品，结果逛了几家发现比较普通。后来才知道，原来大家都用手机生鲜超市/外卖软件 (盒马/美团)，半小时送达又大又好吃！
+                    </p>
+                </div>
+            </div>
+
+            <div class="mt-8 bg-gradient-to-r from-pink-400 to-purple-500 text-white p-6 rounded-2xl text-center shadow-lg">
+                <p class="text-lg md:text-xl font-extrabold" lang-key="quote-text">
+                    "学好中文，下次去上海沉浸式大吃大喝！冲鸭！🚀"
+                </p>
+                <p class="text-xs text-pink-100 mt-2 opacity-90" lang-key="quote-sub">
+                    希望在中文交流会和大家愉快交流，一起加油进步～ 谢谢大家！ 💕
+                </p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 text-center text-xs text-gray-400 py-4">
+        <p lang-key="footer-text">Made with 💕 for Chinese Study Group Presentation by Baek Seungju</p>
+    </footer>
+
+    <!-- SCRIPT FOR UPLOADS & LOCALSTORAGE SAVING -->
+    <script>
+        function triggerFileInput(inputId) {
+            document.getElementById(inputId).click();
+        }
+
+        function handleImageUpload(input, imgId, boxId) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    const base64Data = e.target.result;
+                    const img = document.getElementById(imgId);
+                    const box = document.getElementById(boxId);
+                    
+                    img.src = base64Data;
+                    img.classList.add('has-img');
+                    if (box) box.classList.add('has-image');
+
+                    // Save Permanently to Local Storage and Cloud DB
+                    try {
+                        localStorage.setItem('user_photo_' + imgId, base64Data);
+                    } catch(err) {}
+
+                    if (window.saveImageToCloud) {
+                        await window.saveImageToCloud(imgId, base64Data);
+                    }
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // Restore local cache immediately on load before cloud sync finishes
+        window.addEventListener('DOMContentLoaded', () => {
+            const imgIds = ['img-profile', 'img-spot1', 'img-spot2', 'img-food1', 'img-food2', 'img-food3', 'img-food4', 'img-food5', 'img-food6', 'img-fun1', 'img-fun2', 'img-fun3'];
+            
+            imgIds.forEach(id => {
+                const saved = localStorage.getItem('user_photo_' + id);
+                if (saved) {
+                    const img = document.getElementById(id);
+                    const box = document.getElementById('box-' + id);
+                    if (img) {
+                        img.src = saved;
+                        img.classList.add('has-img');
+                        if (box) box.classList.add('has-image');
+                    }
+                }
+            });
+        });
+    </script>
+
+    <!-- LANGUAGE TRANSLATIONS -->
+    <script>
+        const translations = {
+            zh: {
+                "header-title": "承珠的上海旅行记 & PPT",
+                "intro-badge": "✨ Self Intro / 关于我 ✨",
+                "name": "白承珠 (Baek Seung-ju)",
+                "slogan": "\"半导体工程师 👩‍💻 | 记录生活的植宠大户 🌿\"",
+                "label-birthday": "生日:",
+                "val-birthday": "1997.10.10 (天秤座 ♎️)",
+                "label-birthplace": "出生:",
+                "val-birthplace": "出生于美国加州 🇺🇸",
+                "label-live": "居住:",
+                "val-live": "建大入口 (本家) ⇄ 东滩 (独居)",
+                "label-job": "职业:",
+                "val-job": "半导体工程师",
+                "label-hobby": "兴趣爱好 (Hobbies):",
+                "hobby-1": "🌱 养花种草",
+                "hobby-2": "📚 语言学习",
+                "hobby-3": "👩‍🍳 动手做饭",
+                "hobby-4": "✈️ 打卡旅行",
+                "label-lang": "语言技能:",
+                "lang-ko": "🇰🇷 韩语",
+                "lang-zh": "🇨🇳 中文",
+                "lang-en": "🇺🇸 英语",
+                "shanghai-title": "最爱的旅行目的地: 上海 (Shanghai) ✨",
+                "spot1-title": "外滩 & 东方明珠夜景",
+                "spot1-desc": "外滩夜景简直绝绝子！站在黄浦江边吹着晚风，看着东方明珠和天际线灯光秀太治愈了，拍照出片率直接拉满 📸!",
+                "spot2-title": "上海迪士尼乐园",
+                "spot2-desc": "成年人的避世童话世界！戴上朱迪兔子耳朵沉浸式游园，晚上的城堡烟花秀直接把浪漫氛围拉满 🎆～",
+                "food-title": "韩国人去上海必吃的宝藏美食清单 😋",
+                "food-badge": "🔥 种草预警 / 美食打卡",
+                "food1-name": "莉莲蛋挞 (Lillian Bakery)",
+                "food1-tag": "蛋挞界 Ceiling 👑",
+                "food1-desc": "外酥里嫩，奶香味浓郁上头！每次路过都忍不住买上一盒～",
+                "food2-name": "海底捞火锅 (Haidilao)",
+                "food2-tag": "快乐火锅 🍲",
+                "food2-desc": "体验极致的服务！看甩面表演、DIY秘制蘸料，用餐氛围感直接搞起 🎉",
+                "food3-name": "香辣 / 麻辣小龙虾",
+                "food3-tag": "夜宵灵魂伴侣 🦞",
+                "food3-desc": "剥虾剥到根本停不下来！十三香和麻辣味香辣过瘾，越吃越过瘾～",
+                "food4-name": "很久以前羊肉串",
+                "food4-tag": "撸串神器 🍢",
+                "food4-desc": "自动旋转烤炉超有意思！羊肉鲜嫩无膻味，搭配冰啤酒绝了 🍻",
+                "food5-name": "外婆家：东坡肉 & 麻婆豆腐",
+                "food5-tag": "性价比下饭神器 🍚",
+                "food5-desc": "东坡肉软糯肥而不腻，麻婆豆腐麻辣鲜香，妥妥的米饭杀手！",
+                "food6-name": "大壶春：生煎包",
+                "food6-tag": "爆汁生煎 🥟",
+                "food6-desc": "底脆肉香，咬开就是满满的浓郁汤汁，上海老字号名不虚传！",
+                "fun-title": "上海之旅 - 奇妙文化大发现 🤯",
+                "fun1-title": "共享单车大军 🚲",
+                "fun1-desc": "街头到处都是蓝色和黄色的共享单车！感觉一条街上就有50多辆排成一排，随扫随走超级方便～",
+                "fun1-tag": "#扫码即走",
+                "fun2-title": "菜单上的甲鱼料理 🐢",
+                "fun2-desc": "在餐厅菜单上看到整只“甲鱼”真的被震撼到了！中国的大补饮食文化太神奇了！",
+                "fun2-tag": "#硬核滋补",
+                "fun3-title": "便利店牛肉干专区 🥩",
+                "fun3-desc": "便利店里居然有一大片肉干/手撕牛肉专柜！各种口味辣爽带劲，解馋追剧必备零食～",
+                "fun3-tag": "#追剧零食",
+                "tmi-title": "美中不足的小插曲 & 学习中文的契机 💡",
+                "tmi1-title": "1. 机场地下网络信号不好，打车卡关一小时 🚕",
+                "tmi1-desc": "到达上海机场地下时手机信号超级弱，完全刷新不出打车软件，整整卡了一个小时才打到车！而且发现当地几乎所有地方都只能用中文沟通 -> 瞬间激发了我“一定要把中文学好！”的决心 🔥！",
+                "tmi2-title": "2. 便利店甜品比想像中少？原来全在手机外卖里！📱",
+                "tmi2-desc": "以为便利店会像韩国一样有超多网红精致甜品，结果逛了几家发现比较普通。后来才知道，原来大家都用手机生鲜超市/外卖软件 (盒马/美团)，半小时送达又大又好吃！",
+                "quote-text": "\"学好中文，下次去上海沉浸式大吃大喝！冲鸭！🚀\"",
+                "quote-sub": "希望在中文交流会和大家愉快交流，一起加油进步～ 谢谢大家！ 💕",
+                "footer-text": "Made with 💕 for Chinese Study Group Presentation by Baek Seungju"
+            },
+            ko: {
+                "header-title": "백승주의 상하이 여행기 & PPT",
+                "intro-badge": "✨ 자기소개 / Self Intro ✨",
+                "name": "백승주 (Baek Seung-ju)",
+                "slogan": "\"반도체 엔지니어 👩‍💻 | 일상을 기록하는 식물 집사 🌿\"",
+                "label-birthday": "생일:",
+                "val-birthday": "1997.10.10 (천칭자리 ♎️)",
+                "label-birthplace": "출생:",
+                "val-birthplace": "미국 캘리포니아 주 🇺🇸",
+                "label-live": "거주:",
+                "val-live": "건대입구 (본가) ⇄ 동탄 (자취)",
+                "label-job": "직업:",
+                "val-job": "반도체 엔지니어",
+                "label-hobby": "취미 (Hobbies):",
+                "hobby-1": "🌱 식물 기르기",
+                "hobby-2": "📚 언어 공부하기",
+                "hobby-3": "👩‍🍳 요리하기",
+                "hobby-4": "✈️ 여행하기",
+                "label-lang": "가능 언어:",
+                "lang-ko": "🇰🇷 한국어",
+                "lang-zh": "🇨🇳 중국어",
+                "lang-en": "🇺🇸 영어",
+                "shanghai-title": "가장 좋았던 여행지: 상하이 (Shanghai) ✨",
+                "spot1-title": "와이탄 & 동방명주 야경",
+                "spot1-desc": "와이탄 야경은 정말 예뻤어요! 황푸강 강바람을 맞으며 동방명주와 스카이라인 조명쇼를 감상하니 힐링 그 자체, 사진 촬영 명소 📸!",
+                "spot2-title": "상하이 디즈니랜드",
+                "spot2-desc": "어른들을 위한 동화 속 세상! 주디 토끼 귀 머리띠를 쓰고 신나게 둘러보고, 밤에 본 성 불꽃놀이는 낭만 가득 🎆～",
+                "food-title": "한국인이 가본 상하이 필수 먹방 코스 😋",
+                "food-badge": "🔥 상하이 맛집 탐방 코스",
+                "food1-name": "릴리안 에그타르트 (Lillian Bakery)",
+                "food1-tag": "에그타르트 끝판왕 👑",
+                "food1-desc": "겉은 바삭하고 속은 부드러우며 고소한 우유 향이 대박! 지나갈 때마다 한 상자씩 사 먹었어요～",
+                "food2-name": "하이디라오 훠궈 (Haidilao)",
+                "food2-tag": "행복한 훠궈 🍲",
+                "food2-desc": "극상의 친절 서비스! 면 수타 쇼 관람, DIY 특제 소스 제조로 식사 분위기 최고 🎉",
+                "food3-name": "마라롱샤 / 향라롱샤",
+                "food3-tag": "야식의 영혼 짝꿍 🦞",
+                "food3-desc": "손을 멈출 수 없을 정도로 맛있어요! 십삼향과 마라의 매콤함이 중독적이라 계속 손이 갑니다～",
+                "food4-name": "헌지우이치엔 양꼬치",
+                "food4-tag": "양꼬치 맛집 🍢",
+                "food4-desc": "자동 회전 기계가 신기하고 재미있어요! 잡내 없이 촉촉한 양고기에 시원한 맥주 한 잔은 완벽 🍻",
+                "food5-name": "그랜드마더 (외포가): 동파육 & 마파두부",
+                "food5-tag": "가성비 밥도둑 🍚",
+                "food5-desc": "동파육은 부드럽고 느끼하지 않으며, 마파두부는 매콤하고 알싸해서 밥 한 공기 뚝딱!",
+                "food6-name": "대호춘: 셩지엔빠오 (군만두)",
+                "food6-tag": "육즙 가득 군만두 🥟",
+                "food6-desc": "바삭한 바닥과 고소한 고기, 한 입 베어 물면 꽉 찬 육즙이 퍼지는 상하이 전통 맛집!",
+                "fun-title": "상하이 여행 - 신기했던 문화 대발견 🤯",
+                "fun1-title": "공유 자전거 대군 🚲",
+                "fun1-desc": "길거리에 파란색, 노란색 공유 자전거가 정말 많았어요! 한 거리에만 50대 넘게 늘어서 있어서 언제든 QR 찍고 탈 수 있어 편리했습니다～",
+                "fun1-tag": "#QR스캔바로이용",
+                "fun2-title": "메뉴판의 자라 요리 🐢",
+                "fun2-desc": "식당 메뉴판에서 통째로 들어간 '자라' 요리를 보고 신기했어요! 중국의 보양식 문화가 독특했습니다!",
+                "fun2-tag": "#강렬한보양식",
+                "fun3-title": "편의점 육포 코너 🥩",
+                "fun3-desc": "편의점에 육포/수시육포 전용 매대가 크게 마련되어 있더라고요! 갖가지 매콤한 맛이 중독적이라 안주로 딱이었어요～",
+                "fun3-tag": "#주전부리추천",
+                "tmi-title": "아쉬웠던 점 & 중국어 공부를 시작한 계기 💡",
+                "tmi1-title": "1. 공항 지하 데이터 먹통으로 택시 잡기 1시간 소요 🚕",
+                "tmi1-desc": "상하이 공항 지하에 도착했을 때 데이터가 너무 안 터져서 택시 앱이 열리지 않아 1시간이나 고생했어요! 게다가 현지 대부분이 중국어로만 소통이 가능해서 -> '중국어를 꼭 열공해야겠다!'는 결심을 하게 되었습니다 🔥!",
+                "tmi2-title": "2. 편의점에 디저트가 생각보다 적음? 알고 보니 앱 배달! 📱",
+                "tmi2-desc": "한국처럼 편의점에 예쁜 디저트가 많을 줄 알았는데 살짝 평범했어요. 나중에 알고 보니 다들 롄퉁/허마/메이투안 같은 배달 앱으로 30분 만에 주문해 먹더라고요!",
+                "quote-text": "\"중국어 열공해서 다음 상하이 여행 때는 제대로 씹고 뜯고 맛보고 즐기기! 파이팅! 🚀\"",
+                "quote-sub": "중국어 모임원 분들과 즐겁게 소통하고 함께 성장하고 싶습니다～ 감사합니다! 💕",
+                "footer-text": "Made with 💕 for Chinese Study Group Presentation by Baek Seungju"
+            }
+        };
+
+        function switchLang(lang) {
+            const currentTrans = translations[lang];
+            if (!currentTrans) return;
+
+            // Update all element text content by lang-key attribute
+            document.querySelectorAll('[lang-key]').forEach(el => {
+                const key = el.getAttribute('lang-key');
+                if (currentTrans[key] !== undefined) {
+                    el.textContent = currentTrans[key];
+                }
+            });
+
+            // Update Active Button Styling
+            const btnZh = document.getElementById('btn-zh');
+            const btnKo = document.getElementById('btn-ko');
+
+            if (lang === 'zh') {
+                btnZh.classList.add('active');
+                btnKo.classList.remove('active');
+                document.documentElement.lang = 'zh-CN';
+            } else {
+                btnKo.classList.add('active');
+                btnZh.classList.remove('active');
+                document.documentElement.lang = 'ko';
+            }
+        }
+
+        // Initialize default language view on load
+        window.addEventListener('DOMContentLoaded', () => {
+            switchLang('zh');
+        });
+    </script>
+</body>
+</html>
